@@ -40,7 +40,7 @@ docker-compose up -d
 4. After `setup1.sh` executed successfully start `setup2.sh`:
 
 ```
-setup2.sh
+./setup2.sh
 ```
 
 At this point, the container should be available at:
