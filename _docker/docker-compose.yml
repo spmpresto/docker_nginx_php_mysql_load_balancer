@@ -1,0 +1,282 @@
+
+services:
+  # Load Balancer
+  nginx_load_balancer:
+    image: nginx:1.22.0
+    container_name: nginx_load_balancer
+    ports:
+      - ${LOAD_BALANCER_PORT}:80
+      - ${LOAD_BALANCER_PORT_SSL}:443
+      - ${PROMETHEUS_PORT}:81 #Prometheus
+      - ${GRAFANA_PORT}:82 #Grafana
+    volumes:
+      - ../:/var/www:rw
+      - ./configs/nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./configs/nginx/conf.d/:/etc/nginx/conf.d/
+      - ./configs/nginx/.htpasswd:/etc/nginx/.htpasswd
+      - ./configs/nginx/ssl/:/etc/nginx/ssl/:ro
+      - ./configs/nginx/mime.types:/etc/nginx/mime.types
+      - ./configs/nginx/fastcgi_params:/etc/nginx/fastcgi_params
+    networks:
+      - app-network
+    depends_on:
+      - php_app1
+      - php_app2
+      - php_app3
+    restart: always
+
+  ## for test purposes
+  nginx_exporter:
+    image: nginx/nginx-prometheus-exporter:latest
+    container_name: nginx_exporter
+    command:
+      - -nginx.scrape-uri=http://nginx_load_balancer:80/stub_status
+    networks:
+      - app-network
+    depends_on:
+      - nginx_load_balancer
+  ## for test purposes
+
+  # PHP Application 1
+  php_app1:
+    build:
+      context: ./configs/php
+      dockerfile: Dockerfile
+    image: php:7.4-fpm
+    container_name: php_app1
+    volumes:
+      - ../:/var/www:rw
+      - ./configs/php/php.ini:/usr/local/etc/php/conf.d/php.ini
+      - ./configs/php/pool.d/www.conf:/usr/local/etc/php-fpm.d/www.conf
+    networks:
+      - app-network
+    restart: always
+    depends_on:
+      - mysql
+
+  # PHP Application 2
+  php_app2:
+    build:
+      context: ./configs/php
+      dockerfile: Dockerfile
+    image: php:7.4-fpm
+    container_name: php_app2
+    volumes:
+      - ../:/var/www:rw
+      - ./configs/php/php.ini:/usr/local/etc/php/conf.d/php.ini
+      - ./configs/php/pool.d/www.conf:/usr/local/etc/php-fpm.d/www.conf
+    networks:
+      - app-network
+    restart: always
+    depends_on:
+      - mysql
+
+  # PHP Application 3
+  php_app3:
+    build:
+      context: ./configs/php
+      dockerfile: Dockerfile
+    image: php:7.4-fpm
+    container_name: php_app3
+    volumes:
+      - ../:/var/www:rw
+      - ./configs/php/php.ini:/usr/local/etc/php/conf.d/php.ini
+      - ./configs/php/pool.d/www.conf:/usr/local/etc/php-fpm.d/www.conf
+    networks:
+      - app-network
+    restart: always
+    depends_on:
+      - mysql
+
+  ## for test purposes
+  php_fpm_exporter_app1:
+    image: hipages/php-fpm_exporter:latest
+    container_name: php_fpm_exporter_app1
+    environment:
+      - PHP_FPM_SCRAPE_URI=tcp://php_app1:9000/status
+      - PHP_FPM_WEB_LISTEN_ADDRESS=:9253
+    networks:
+      - app-network
+    depends_on:
+      - php_app1
+    restart: always
+  ## for test purposes
+
+  ## for test purposes
+  php_fpm_exporter_app2:
+    image: hipages/php-fpm_exporter:latest
+    container_name: php_fpm_exporter_app2
+    environment:
+      - PHP_FPM_SCRAPE_URI=tcp://php_app2:9000/status
+      - PHP_FPM_WEB_LISTEN_ADDRESS=:9253
+    networks:
+      - app-network
+    depends_on:
+      - php_app2
+    restart: always
+  ## for test purposes
+
+  ## for test purposes
+  php_fpm_exporter_app3:
+    image: hipages/php-fpm_exporter:latest
+    container_name: php_fpm_exporter_app3
+    environment:
+      - PHP_FPM_SCRAPE_URI=tcp://php_app3:9000/status
+      - PHP_FPM_WEB_LISTEN_ADDRESS=:9253
+    networks:
+      - app-network
+    depends_on:
+      - php_app3
+    restart: always
+  ## for test purposes
+
+  # MySQL Database
+  mysql:
+    env_file:
+      - .env
+    image: mysql:8.0.35
+    container_name: ${DB_CONTAINER}
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME}
+    volumes:
+      - ./data/db:/var/lib/mysql
+      - ./configs/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./configs/mysql/init-database.sql:/docker-entrypoint-initdb.d/init-database.sql
+      - ./configs/mysql/my.cnf:/etc/mysql/my.cnf
+## open port if you want connect to mysql by phpmyadmin, datagrip, mysqlworkbench, etc.
+#    ports:
+#      - ${DB_PORT}:3306
+## open port if you want connect to mysql by phpmyadmin, datagrip, mysqlworkbench, etc.
+    command: mysqld --character-set-server=utf8 --collation-server=utf8_unicode_ci
+    networks:
+      - app-network
+    restart: always
+
+  ## for test purposes
+  # MySQL Exporter Service
+  mysql_exporter:
+    env_file:
+      - .env
+    image: prom/mysqld-exporter:latest
+    container_name: mysql_exporter
+    command:
+      - "--mysqld.username=${DB_USER}:${DB_ROOT_PASSWORD}"
+      - "--mysqld.address=${DB_CONTAINER}:3306"
+    environment:
+      - DATA_SOURCE_NAME=${DB_USER}:${DB_ROOT_PASSWORD}@(mysql_server:3306)/
+      - collect.info_schema.tablestats=true
+      - collect.info_schema.userstats=true
+      - collect.info_schema.query_response_time=true
+      - collect.auto_increment.columns=true
+      - collect.binlog_size=true
+      - collect.perf_schema.eventsstatements=true
+      - collect.perf_schema.eventswaits=true
+      - collect.perf_schema.file_events=true
+      - collect.perf_schema.indexiowaits=true
+      - collect.perf_schema.tableiowaits=true
+      - collect.perf_schema.tablelocks=true
+    networks:
+      - app-network
+    depends_on:
+      - mysql
+    restart: always
+  ## for test purposes
+
+  # Memcached Service
+  memcached:
+    env_file:
+      - .env
+    image: memcached:1.6.18
+    container_name: memcached
+    networks:
+      - app-network
+    restart: always
+    depends_on:
+      - mysql
+
+  ## for test purposes
+  # Memcached Exporter
+  memcached_exporter:
+    image: prom/memcached-exporter:latest
+    container_name: memcached_exporter
+    environment:
+      - MEMCACHED_ADDRESS=memcached:11211
+    command: --memcached.address=memcached:11211
+    networks:
+      - app-network
+    depends_on:
+      - memcached
+    restart: always
+  ## for test purposes
+
+
+  # Sphinx Search
+  sphinx:
+    image: healixx/sphinx:latest
+## example how to configure limits of resources
+#    deploy:
+#      resources:
+#        limits:
+#          memory: 16384M   # Limit memory usage: 2048M
+#          cpus: "8"    # Limit CPU usage: 2CPU
+#        reservations:
+#          memory: 2048M   # Memory reservation: 1024M
+#          cpus: "2"   # CPU reservation: 1CPU
+## example how to configure limits of resources
+    container_name: sphinx
+    volumes:
+      - ../_config/sphinx:/var/data:rw
+      - ../:/var/www:rw
+      - ../_config/sphinx/sphinx.conf:/etc/sphinx/sphinx.conf
+    networks:
+      - app-network
+    depends_on:
+      - mysql
+
+  # Prometheus Monitoring
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus
+    volumes:
+      - ./configs/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./data/prometheus:/prometheus
+    networks:
+      - app-network
+    restart: always
+
+  # Grafana Dashboard
+  grafana:
+    env_file:
+      - .env
+    image: grafana/grafana
+    container_name: grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GF_SECURITY_ADMIN_USER}
+      - GF_SECURITY_ADMIN_PASSWORD=${GF_SECURITY_ADMIN_PASSWORD}
+    volumes:
+      - ./data/grafana:/var/lib/grafana
+    networks:
+      - app-network
+    restart: always
+
+  ## for test purposes
+  node-exporter:
+    image: prom/node-exporter:v1.3.1
+    container_name: node-exporter
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude'
+      - '^/(sys|proc|dev|host|etc|rootfs/var/lib/docker/containers|rootfs/var/lib/docker/overlay2|rootfs/run/docker/netns|rootfs/var/lib/docker/aufs)($$|/)'
+    networks:
+      - app-network
+    ## for test purposes
+
+networks:
+  app-network:
+    driver: bridge
