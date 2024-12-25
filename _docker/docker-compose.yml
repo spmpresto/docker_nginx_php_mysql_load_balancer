@@ -30,7 +30,7 @@ services:
     image: nginx/nginx-prometheus-exporter:latest
     container_name: nginx_exporter
     command:
-      - -nginx.scrape-uri=http://nginx_load_balancer:80/stub_status
+      - -nginx.scrape-uri=http://nginx_load_balancer:83/stub_status
     networks:
       - app-network
     depends_on:
